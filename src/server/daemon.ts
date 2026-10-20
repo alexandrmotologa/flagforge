@@ -12,6 +12,8 @@ import { formatOFREPResponse, exportToFlagdSchema } from '../provider/ofrep.js';
 import { BlastRadiusSimulator } from '../simulator/blast-simulator.js';
 import { ASTDeadFlagScanner } from '../scanner/ast-scanner.js';
 import { ASTCodemodEngine } from '../scanner/codemod.js';
+import { ErrorSentinel } from './sentinel.js';
+import { WebhookDispatcher } from './webhooks.js';
 
 export interface DaemonOptions {
   port?: number;
@@ -29,10 +31,13 @@ export class FlagForgeDaemon {
   public readonly simulator: BlastRadiusSimulator;
   public readonly scanner: ASTDeadFlagScanner;
   public readonly codemod: ASTCodemodEngine;
+  public readonly sentinel: ErrorSentinel;
+  public readonly webhooks: WebhookDispatcher;
 
   private server?: Server;
   private port: number;
   private uiStaticDir: string;
+  private schedulerInterval?: NodeJS.Timeout;
 
   constructor(options: DaemonOptions = {}) {
     this.port = options.port || 4900;
@@ -44,6 +49,12 @@ export class FlagForgeDaemon {
     this.simulator = new BlastRadiusSimulator(this.engine);
     this.scanner = new ASTDeadFlagScanner();
     this.codemod = new ASTCodemodEngine();
+    this.webhooks = new WebhookDispatcher();
+
+    // Circuit Breaker / Error Sentinel with auto-rollback trigger
+    this.sentinel = new ErrorSentinel((event) => {
+      this.handleCircuitBreakerTrip(event);
+    });
 
     // Initialize YAML storage with live hot reload
     this.yamlStorage = new YamlStorage({
@@ -52,6 +63,7 @@ export class FlagForgeDaemon {
       onConfigChange: (newConfig) => {
         console.log('[FlagForge] Detected configuration change on disk. Reloading...');
         this.engine.loadConfiguration(newConfig);
+        this.webhooks.setWebhooks(newConfig.webhooks || []);
         this.scanner.updateKnownFlags(this.engine.getAllFlags());
         this.sse.broadcast({
           type: 'init',
@@ -63,11 +75,18 @@ export class FlagForgeDaemon {
     // Initial load
     const initialConfig = this.yamlStorage.load();
     this.engine.loadConfiguration(initialConfig);
+    this.webhooks.setWebhooks(initialConfig.webhooks || []);
     this.scanner.updateKnownFlags(this.engine.getAllFlags());
+
+    // Record initial snapshots for time-travel
+    for (const flag of this.engine.getAllFlags()) {
+      this.sqliteStorage.recordSnapshot(flag);
+    }
 
     this.app = express();
     this.configureMiddleware();
     this.configureRoutes();
+    this.startScheduler();
   }
 
   private configureMiddleware(): void {
@@ -91,7 +110,6 @@ export class FlagForgeDaemon {
     // 2. Server-Sent Events stream
     this.app.get('/api/v1/events', (req: Request, res: Response) => {
       this.sse.addClient(res);
-      // Immediately send current state on connection
       res.write(`event: init\ndata: ${JSON.stringify({ flags: this.engine.getAllFlags() })}\n\n`);
     });
 
@@ -103,6 +121,7 @@ export class FlagForgeDaemon {
 
       const flagsWithMetrics = flags.map((flag) => ({
         ...flag,
+        breakerStatus: this.sentinel.getStatus(flag.key),
         metrics: metricsMap.get(flag.key) || {
           flagKey: flag.key,
           totalEvaluations: 0,
@@ -122,6 +141,7 @@ export class FlagForgeDaemon {
 
       this.engine.setFlag(flagData);
       this.persistConfiguration();
+      this.sqliteStorage.recordSnapshot(flagData);
       this.sqliteStorage.recordAudit('CREATE', flagData.key, { name: flagData.name });
       this.sse.broadcast({ type: 'flag_updated', data: flagData });
 
@@ -136,7 +156,11 @@ export class FlagForgeDaemon {
         return;
       }
       const metrics = this.sqliteStorage.getMetrics(flag.key);
-      res.json({ flag, metrics: metrics[0] || null });
+      res.json({
+        flag,
+        breakerStatus: this.sentinel.getStatus(flag.key),
+        metrics: metrics[0] || null,
+      });
     });
 
     this.app.put('/api/v1/flags/:key', (req: Request, res: Response) => {
@@ -156,6 +180,7 @@ export class FlagForgeDaemon {
 
       this.engine.setFlag(updated);
       this.persistConfiguration();
+      this.sqliteStorage.recordSnapshot(updated);
       this.sqliteStorage.recordAudit('UPDATE', flagKey, { changes: Object.keys(req.body) });
       this.sse.broadcast({ type: 'flag_updated', data: updated });
 
@@ -190,8 +215,10 @@ export class FlagForgeDaemon {
       flag.updatedAt = new Date().toISOString();
       this.engine.setFlag(flag);
       this.persistConfiguration();
+      this.sqliteStorage.recordSnapshot(flag);
 
       this.sqliteStorage.recordAudit('TOGGLE', flagKey, { enabled: flag.enabled });
+      this.webhooks.dispatch('TOGGLE', flagKey, { enabled: flag.enabled });
       this.sse.broadcast({
         type: 'flag_toggled',
         data: { flagKey, enabled: flag.enabled },
@@ -238,7 +265,15 @@ export class FlagForgeDaemon {
 
       this.engine.setFlag(flag);
       this.persistConfiguration();
+      this.sqliteStorage.recordSnapshot(flag);
+
       this.sqliteStorage.recordAudit('ROLLOUT_ADVANCE', flagKey, {
+        from: currentStage,
+        to: nextStage,
+        percentage: flag.rollout.percentage,
+      });
+
+      this.webhooks.dispatch('CANARY_ADVANCE', flagKey, {
         from: currentStage,
         to: nextStage,
         percentage: flag.rollout.percentage,
@@ -248,34 +283,91 @@ export class FlagForgeDaemon {
       res.json({ flag });
     });
 
-    // 4. REST Evaluations
+    // 4. Circuit Breaker / Error Sentinel Endpoint
+    this.app.post('/api/v1/flags/:key/report-error', (req: Request, res: Response) => {
+      const flagKey = String(req.params.key);
+      const flag = this.engine.getFlag(flagKey);
+      if (!flag) {
+        res.status(404).json({ error: 'Flag not found' });
+        return;
+      }
+
+      this.sentinel.recordError(flagKey);
+      const { status, tripped, action } = this.sentinel.evaluateFlag(flag);
+
+      res.json({
+        reported: true,
+        breakerStatus: status,
+        tripped,
+        actionTaken: action,
+      });
+    });
+
+    this.app.get('/api/v1/flags/:key/circuit-breaker', (req: Request, res: Response) => {
+      const flagKey = String(req.params.key);
+      res.json({ breakerStatus: this.sentinel.getStatus(flagKey) });
+    });
+
+    // 5. Dependency Graph DAG Endpoint
+    this.app.get('/api/v1/graph', (req: Request, res: Response) => {
+      res.json(this.engine.getDependencyGraph());
+    });
+
+    // 6. REST Evaluations (with Time-Travel & Multi-Environment support)
     this.app.post('/api/v1/evaluate', (req: Request, res: Response) => {
-      const { flagKey, defaultValue, context } = req.body;
+      const { flagKey, defaultValue, context, asOf } = req.body;
       if (!flagKey) {
         res.status(400).json({ error: 'Missing flagKey' });
         return;
       }
 
-      const details = this.engine.evaluate(flagKey, defaultValue, context || {});
+      const env = (req.query.env as string) || (req.headers['x-flagforge-environment'] as string);
+      const evalContext = { ...context, environment: env || context?.environment };
+
+      // Time-Travel Evaluation against historical snapshot if asOf is passed
+      if (asOf) {
+        const historicalFlag = this.sqliteStorage.getFlagAtTimestamp(flagKey, asOf);
+        if (historicalFlag) {
+          const tempEngine = new FeatureFlagEngine([historicalFlag]);
+          const details = tempEngine.evaluate(flagKey, defaultValue, evalContext);
+          res.json({ ...details, asOf, historical: true });
+          return;
+        }
+      }
+
+      const details = this.engine.evaluate(flagKey, defaultValue, evalContext);
       this.sqliteStorage.recordEvaluation(flagKey, details.variant);
+      this.sentinel.recordEvaluation(flagKey, false);
+
+      const flag = this.engine.getFlag(flagKey);
+      if (flag) {
+        this.sentinel.evaluateFlag(flag);
+      }
+
       res.json(details);
     });
 
     this.app.post('/api/v1/evaluate-all', (req: Request, res: Response) => {
       const { context } = req.body;
-      const results = this.engine.evaluateAll(context || {});
+      const env = (req.query.env as string) || (req.headers['x-flagforge-environment'] as string);
+      const evalContext = { ...context, environment: env || context?.environment };
+
+      const results = this.engine.evaluateAll(evalContext);
       for (const [key, details] of Object.entries(results)) {
         this.sqliteStorage.recordEvaluation(key, details.variant);
+        this.sentinel.recordEvaluation(key, false);
       }
       res.json({ flags: results });
     });
 
-    // 5. CNCF OFREP Standard Endpoints
+    // 7. CNCF OFREP Standard Endpoints
     this.app.post('/ofrep/v1/evaluate/flags/:flagKey', (req: Request, res: Response) => {
       const flagKey = String(req.params.flagKey);
       const context = req.body?.context || {};
-      const flag = this.engine.getFlag(flagKey);
+      const env = (req.query.env as string) || (req.headers['x-flagforge-environment'] as string);
+      const evalContext = { ...context, environment: env || context?.environment };
 
+      const flag = this.engine.getFlag(flagKey);
       if (!flag) {
         res.status(404).json({
           key: flagKey,
@@ -285,27 +377,34 @@ export class FlagForgeDaemon {
         return;
       }
 
-      const details = this.engine.evaluate(flagKey, flag.defaultValue, context);
+      const details = this.engine.evaluate(flagKey, flag.defaultValue, evalContext);
       this.sqliteStorage.recordEvaluation(flagKey, details.variant);
+      this.sentinel.recordEvaluation(flagKey, false);
+      this.sentinel.evaluateFlag(flag);
+
       const ofrepPayload = formatOFREPResponse(details, flag);
       res.json(ofrepPayload);
     });
 
     this.app.post('/ofrep/v1/evaluate/flags', (req: Request, res: Response) => {
       const context = req.body?.context || {};
+      const env = (req.query.env as string) || (req.headers['x-flagforge-environment'] as string);
+      const evalContext = { ...context, environment: env || context?.environment };
+
       const flags = this.engine.getAllFlags();
       const responses = [];
 
       for (const flag of flags) {
-        const details = this.engine.evaluate(flag.key, flag.defaultValue, context);
+        const details = this.engine.evaluate(flag.key, flag.defaultValue, evalContext);
         this.sqliteStorage.recordEvaluation(flag.key, details.variant);
+        this.sentinel.recordEvaluation(flag.key, false);
         responses.push(formatOFREPResponse(details, flag));
       }
 
       res.json({ flags: responses });
     });
 
-    // 6. Metrics and Audit
+    // 8. Metrics and Audit
     this.app.get('/api/v1/metrics', (req: Request, res: Response) => {
       res.json({ metrics: this.sqliteStorage.getMetrics() });
     });
@@ -314,7 +413,7 @@ export class FlagForgeDaemon {
       res.json({ audit: this.sqliteStorage.getAuditLogs(100) });
     });
 
-    // 7. Config Export / Import
+    // 9. Config Export / Import
     this.app.get('/api/v1/export/yaml', (req: Request, res: Response) => {
       res.setHeader('Content-Type', 'text/yaml');
       res.setHeader('Content-Disposition', 'attachment; filename="flagforge.config.yaml"');
@@ -326,7 +425,7 @@ export class FlagForgeDaemon {
       res.json(exportToFlagdSchema(flags));
     });
 
-    // 8. Blast-Radius Simulator
+    // 10. Blast-Radius Simulator
     this.app.post('/api/v1/simulate', (req: Request, res: Response) => {
       const { flagKey, cohortSize, customFlag } = req.body;
       if (!flagKey) {
@@ -346,7 +445,7 @@ export class FlagForgeDaemon {
       }
     });
 
-    // 9. AST Dead Flag Scanner and Codemod
+    // 11. AST Dead Flag Scanner and Codemod
     this.app.post('/api/v1/scanner/scan', (req: Request, res: Response) => {
       const targetDir = req.body?.directory || process.cwd();
       try {
@@ -390,7 +489,37 @@ export class FlagForgeDaemon {
       }
     });
 
-    // 10. Serve Static UI if built
+    // Bulk Codemod across entire codebase
+    this.app.post('/api/v1/scanner/codemod-all', (req: Request, res: Response) => {
+      const { directory, flagKey, resolvedValue, dryRun, gitBranch } = req.body;
+      if (!flagKey || resolvedValue === undefined) {
+        res.status(400).json({ error: 'Missing flagKey or resolvedValue' });
+        return;
+      }
+
+      const targetDir = directory || process.cwd();
+      try {
+        const bulkResult = this.codemod.refactorProject(targetDir, flagKey, resolvedValue, {
+          dryRun: dryRun !== false,
+          backup: true,
+          gitBranch,
+        });
+
+        if (dryRun === false) {
+          this.sqliteStorage.recordAudit('CODEMOD_APPLY', flagKey, {
+            bulk: true,
+            filesCount: bulkResult.totalFilesModified,
+            branchCreated: bulkResult.branchCreated,
+          });
+        }
+
+        res.json({ result: bulkResult });
+      } catch (err) {
+        res.status(500).json({ error: (err as Error).message });
+      }
+    });
+
+    // 12. Serve Static UI if built
     if (fs.existsSync(this.uiStaticDir)) {
       this.app.use(express.static(this.uiStaticDir));
       this.app.use((req: Request, res: Response, next: NextFunction) => {
@@ -414,6 +543,101 @@ export class FlagForgeDaemon {
     }
   }
 
+  private handleCircuitBreakerTrip(event: {
+    flagKey: string;
+    action: string;
+    errorRate: number;
+    totalRequests: number;
+  }): void {
+    const flag = this.engine.getFlag(event.flagKey);
+    if (!flag) return;
+
+    console.warn(
+      `[FlagForge Sentinel] Circuit Breaker TRIPPED for flag "${event.flagKey}". Error rate: ${event.errorRate}%. Action: ${event.action}`
+    );
+
+    if (event.action === 'killswitch') {
+      flag.enabled = false;
+    } else if (event.action === 'rollback_stage') {
+      // Rollback canary stage
+      const stagePercentages: Record<CanaryStage, number> = {
+        internal: 0,
+        canary_5: 0,
+        beta_25: 5,
+        staged_50: 25,
+        ga_100: 50,
+        custom: 0,
+      };
+      const current = flag.canaryStage || 'canary_5';
+      const fallbackPct = stagePercentages[current] || 0;
+      if (flag.rollout) flag.rollout.percentage = fallbackPct;
+      flag.canaryStage = fallbackPct === 0 ? 'internal' : fallbackPct === 5 ? 'canary_5' : 'beta_25';
+    }
+
+    flag.updatedAt = new Date().toISOString();
+    this.engine.setFlag(flag);
+    this.persistConfiguration();
+    this.sqliteStorage.recordSnapshot(flag);
+
+    this.sqliteStorage.recordAudit('CIRCUIT_BREAKER_TRIGGERED', event.flagKey, {
+      action: event.action,
+      errorRate: event.errorRate,
+      totalRequests: event.totalRequests,
+    });
+
+    this.webhooks.dispatch('CIRCUIT_BREAKER_TRIGGERED', event.flagKey, {
+      action: event.action,
+      errorRate: event.errorRate,
+    });
+
+    this.sse.broadcast({
+      type: 'flag_updated',
+      data: { ...flag, breakerTripped: true },
+    });
+  }
+
+  private startScheduler(): void {
+    // Check scheduled rollouts every 30 seconds
+    this.schedulerInterval = setInterval(() => {
+      const now = new Date().toISOString();
+      const flags = this.engine.getAllFlags();
+
+      for (const flag of flags) {
+        if (!flag.schedules || flag.schedules.length === 0) continue;
+
+        for (const schedule of flag.schedules) {
+          if (!schedule.applied && schedule.at <= now) {
+            schedule.applied = true;
+            flag.canaryStage = schedule.stage;
+            if (!flag.rollout) flag.rollout = { percentage: 0 };
+            flag.rollout.percentage = schedule.percentage;
+            flag.updatedAt = now;
+
+            console.log(
+              `[FlagForge Scheduler] Automated rollout executed for flag "${flag.key}": advanced to ${schedule.stage} (${schedule.percentage}%)`
+            );
+
+            this.engine.setFlag(flag);
+            this.persistConfiguration();
+            this.sqliteStorage.recordSnapshot(flag);
+
+            this.sqliteStorage.recordAudit('SCHEDULE_TRIGGERED', flag.key, {
+              stage: schedule.stage,
+              percentage: schedule.percentage,
+            });
+
+            this.webhooks.dispatch('SCHEDULE_TRIGGERED', flag.key, {
+              stage: schedule.stage,
+              percentage: schedule.percentage,
+            });
+
+            this.sse.broadcast({ type: 'flag_updated', data: flag });
+          }
+        }
+      }
+    }, 30000);
+  }
+
   private persistConfiguration(): void {
     const config = this.engine.exportConfiguration();
     this.yamlStorage.save(config);
@@ -431,6 +655,7 @@ export class FlagForgeDaemon {
   }
 
   public async stop(): Promise<void> {
+    if (this.schedulerInterval) clearInterval(this.schedulerInterval);
     this.sse.close();
     this.yamlStorage.stopWatching();
     this.sqliteStorage.close();

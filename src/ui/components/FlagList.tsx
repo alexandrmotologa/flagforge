@@ -6,12 +6,14 @@ import {
   Edit2,
   Trash2,
   Activity,
-  Sliders,
   ChevronRight,
   Search,
   Filter,
   Layers,
-  Sparkles,
+  ShieldAlert,
+  GitFork,
+  Bug,
+  RotateCcw,
 } from 'lucide-react';
 import { CanaryStage, FeatureFlag } from '../../core/types.js';
 
@@ -22,6 +24,7 @@ interface FlagListProps {
   onEdit: (flag: FeatureFlag) => void;
   onDelete: (key: string) => void;
   onSimulate: (flagKey: string) => void;
+  onRefresh?: () => void;
 }
 
 export const FlagList: React.FC<FlagListProps> = ({
@@ -31,6 +34,7 @@ export const FlagList: React.FC<FlagListProps> = ({
   onEdit,
   onDelete,
   onSimulate,
+  onRefresh,
 }) => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'canary' | 'active' | 'dead'>('all');
@@ -40,6 +44,15 @@ export const FlagList: React.FC<FlagListProps> = ({
     navigator.clipboard.writeText(key);
     setCopiedKey(key);
     setTimeout(() => setCopiedKey(null), 1500);
+  };
+
+  const handleSimulateError = async (flagKey: string) => {
+    try {
+      await fetch(`/api/v1/flags/${flagKey}/report-error`, { method: 'POST' });
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      console.error('Failed to report error:', err);
+    }
   };
 
   const filteredFlags = flags.filter((f) => {
@@ -110,6 +123,8 @@ export const FlagList: React.FC<FlagListProps> = ({
           {filteredFlags.map((flag) => {
             const pct = getStagePercentage(flag.canaryStage, flag.rollout?.percentage);
             const isKillswitchDisabled = !flag.enabled;
+            const hasPrereqs = flag.prerequisites && flag.prerequisites.length > 0;
+            const breaker = (flag as any).breakerStatus;
 
             return (
               <div
@@ -170,6 +185,30 @@ export const FlagList: React.FC<FlagListProps> = ({
                         >
                           {flag.lifecycle}
                         </span>
+
+                        {/* Prerequisite Pill */}
+                        {hasPrereqs && (
+                          <span className="flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-mono bg-purple-950/40 text-purple-300 border border-purple-800/50">
+                            <GitFork className="w-3 h-3 text-purple-400" />
+                            <span>Requires: {flag.prerequisites!.map((p) => p.flagKey).join(', ')}</span>
+                          </span>
+                        )}
+
+                        {/* Circuit Breaker Status Pill */}
+                        {breaker && breaker.state !== 'HEALTHY' && (
+                          <span
+                            className={`flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider border ${
+                              breaker.state === 'TRIPPED'
+                                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'
+                                : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                            }`}
+                          >
+                            <ShieldAlert className="w-3 h-3" />
+                            <span>
+                              {breaker.state} ({breaker.errorRatePercent}% err)
+                            </span>
+                          </span>
+                        )}
                       </div>
 
                       <p className="text-xs text-zinc-400 line-clamp-1">{flag.description}</p>
@@ -236,6 +275,14 @@ export const FlagList: React.FC<FlagListProps> = ({
                     {/* Action buttons */}
                     <div className="flex items-center space-x-2">
                       <button
+                        onClick={() => handleSimulateError(flag.key)}
+                        title="Simulate Error Report (Test Sentinel Circuit Breaker)"
+                        className="p-2 rounded-lg bg-zinc-800/80 hover:bg-rose-950/40 text-zinc-400 hover:text-rose-400 border border-zinc-700/50 transition-colors"
+                      >
+                        <Bug className="w-4 h-4" />
+                      </button>
+
+                      <button
                         onClick={() => onSimulate(flag.key)}
                         title="Simulate Blast-Radius on cohort"
                         className="p-2 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700/50 transition-colors"
@@ -245,7 +292,7 @@ export const FlagList: React.FC<FlagListProps> = ({
 
                       <button
                         onClick={() => onEdit(flag)}
-                        title="Edit Flag & Targeting Rules"
+                        title="Edit Flag, Prerequisites & Sentinel"
                         className="p-2 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700/50 transition-colors"
                       >
                         <Edit2 className="w-4 h-4 text-zinc-300" />

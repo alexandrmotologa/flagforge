@@ -1,9 +1,18 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import { FeatureFlag } from '../core/types.js';
 
 export interface AuditEntry {
   id: number;
-  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'TOGGLE' | 'CODEMOD_APPLY' | 'ROLLOUT_ADVANCE';
+  action:
+    | 'CREATE'
+    | 'UPDATE'
+    | 'DELETE'
+    | 'TOGGLE'
+    | 'CODEMOD_APPLY'
+    | 'ROLLOUT_ADVANCE'
+    | 'CIRCUIT_BREAKER_TRIGGERED'
+    | 'SCHEDULE_TRIGGERED';
   flagKey: string;
   details: string;
   timestamp: string;
@@ -20,6 +29,7 @@ export class SqliteStorage {
   private db: any = null;
   private inMemoryAudit: AuditEntry[] = [];
   private inMemoryMetrics: Map<string, MetricSummary> = new Map();
+  private inMemorySnapshots: Array<{ flagKey: string; snapshot: string; createdAt: string }> = [];
   private isNodeSqlite = false;
 
   constructor(dbPath?: string) {
@@ -27,7 +37,6 @@ export class SqliteStorage {
     fs.mkdirSync(path.dirname(finalPath), { recursive: true });
 
     try {
-      // Dynamic import or require of node:sqlite
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const sqliteModule = require('node:sqlite');
       if (sqliteModule && sqliteModule.DatabaseSync) {
@@ -36,7 +45,6 @@ export class SqliteStorage {
         this.initSchema();
       }
     } catch {
-      // Resilient fallback to memory store
       this.isNodeSqlite = false;
     }
   }
@@ -58,6 +66,13 @@ export class SqliteStorage {
         count INTEGER NOT NULL DEFAULT 0,
         last_evaluated TEXT NOT NULL,
         PRIMARY KEY (flag_key, variant)
+      );
+
+      CREATE TABLE IF NOT EXISTS flag_snapshots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        flag_key TEXT NOT NULL,
+        snapshot TEXT NOT NULL,
+        created_at TEXT NOT NULL
       );
     `);
   }
@@ -89,6 +104,52 @@ export class SqliteStorage {
       details: detailsStr,
       timestamp,
     });
+  }
+
+  public recordSnapshot(flag: FeatureFlag): void {
+    const timestamp = new Date().toISOString();
+    const snapshotStr = JSON.stringify(flag);
+
+    if (this.isNodeSqlite && this.db) {
+      try {
+        const stmt = this.db.prepare(
+          'INSERT INTO flag_snapshots (flag_key, snapshot, created_at) VALUES (?, ?, ?)'
+        );
+        stmt.run(flag.key, snapshotStr, timestamp);
+        return;
+      } catch (err) {
+        console.error('[FlagForge] SQLite snapshot error:', err);
+      }
+    }
+
+    this.inMemorySnapshots.push({
+      flagKey: flag.key,
+      snapshot: snapshotStr,
+      createdAt: timestamp,
+    });
+  }
+
+  public getFlagAtTimestamp(flagKey: string, timestamp: string): FeatureFlag | null {
+    if (this.isNodeSqlite && this.db) {
+      try {
+        const stmt = this.db.prepare(
+          'SELECT snapshot FROM flag_snapshots WHERE flag_key = ? AND created_at <= ? ORDER BY id DESC LIMIT 1'
+        );
+        const row = stmt.get(flagKey, timestamp) as { snapshot: string } | undefined;
+        if (row && row.snapshot) {
+          return JSON.parse(row.snapshot) as FeatureFlag;
+        }
+      } catch (err) {
+        console.error('[FlagForge] SQLite time-travel query error:', err);
+      }
+    }
+
+    // Fallback to in-memory snapshots
+    const match = [...this.inMemorySnapshots]
+      .reverse()
+      .find((s) => s.flagKey === flagKey && s.createdAt <= timestamp);
+
+    return match ? (JSON.parse(match.snapshot) as FeatureFlag) : null;
   }
 
   public getAuditLogs(limit = 100): AuditEntry[] {

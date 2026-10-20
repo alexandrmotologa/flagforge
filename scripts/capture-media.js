@@ -52,6 +52,21 @@ async function run() {
   await captureFrame(600);
   await captureFrame(600);
 
+  // Switch to Graph tab
+  console.log('Capturing Screenshot: Dependency Graph...');
+  const allNavBtns = await page.$$('button');
+  for (const b of allNavBtns) {
+    const text = await page.evaluate((el) => el.textContent, b);
+    if (text && text.includes('Dependency Graph')) {
+      await b.click();
+      break;
+    }
+  }
+  await new Promise((r) => setTimeout(r, 800));
+  await page.screenshot({ path: path.join(OUT_DIR, 'flagforge-graph.png'), fullPage: false });
+  await captureFrame(600);
+  await captureFrame(600);
+
   // Switch to Scanner tab
   console.log('Capturing Screenshot 3: Dead Flag Scanner...');
   const navButtons = await page.$$('button');

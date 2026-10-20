@@ -1,13 +1,25 @@
 import React from 'react';
-import { Flag, Activity, Sliders, ShieldAlert, Terminal, History, Plus } from 'lucide-react';
+import {
+  Flag,
+  Activity,
+  Sliders,
+  ShieldAlert,
+  Terminal,
+  History,
+  Plus,
+  GitFork,
+  Globe,
+} from 'lucide-react';
 
-export type TabType = 'flags' | 'simulator' | 'scanner' | 'playground' | 'audit';
+export type TabType = 'flags' | 'simulator' | 'graph' | 'scanner' | 'playground' | 'audit';
 
 interface HeaderProps {
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
   connected: boolean;
   flagsCount: number;
+  environment: string;
+  setEnvironment: (env: string) => void;
   onNewFlag: () => void;
 }
 
@@ -16,6 +28,8 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveTab,
   connected,
   flagsCount,
+  environment,
+  setEnvironment,
   onNewFlag,
 }) => {
   return (
@@ -24,7 +38,10 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center justify-between h-16">
           {/* Logo and Product Title */}
           <div className="flex items-center space-x-6">
-            <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setActiveTab('flags')}>
+            <div
+              className="flex items-center space-x-3 cursor-pointer"
+              onClick={() => setActiveTab('flags')}
+            >
               <div className="w-9 h-9 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold shadow-inner">
                 <Flag className="w-5 h-5 text-indigo-400" />
               </div>
@@ -49,8 +66,19 @@ export const Header: React.FC<HeaderProps> = ({
                 />
                 <span>{connected ? 'SSE Live' : 'Reconnecting'}</span>
               </div>
-              <div className="px-2.5 py-1 rounded-full text-xs font-mono bg-zinc-900 border border-zinc-800 text-zinc-400">
-                {flagsCount} {flagsCount === 1 ? 'flag' : 'flags'} active
+
+              {/* Environment Switcher */}
+              <div className="flex items-center space-x-1 px-2 py-0.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs">
+                <Globe className="w-3.5 h-3.5 text-zinc-400" />
+                <select
+                  value={environment}
+                  onChange={(e) => setEnvironment(e.target.value)}
+                  className="bg-transparent text-xs font-semibold text-indigo-400 focus:outline-none cursor-pointer"
+                >
+                  <option value="local">Env: local</option>
+                  <option value="staging">Env: staging</option>
+                  <option value="production">Env: production</option>
+                </select>
               </div>
             </div>
           </div>
@@ -59,19 +87,19 @@ export const Header: React.FC<HeaderProps> = ({
           <nav className="hidden lg:flex items-center space-x-1 bg-zinc-900/60 p-1 rounded-xl border border-zinc-800/80">
             <button
               onClick={() => setActiveTab('flags')}
-              className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                 activeTab === 'flags'
                   ? 'bg-zinc-800 text-zinc-100 shadow-sm border border-zinc-700/50'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
               }`}
             >
               <Sliders className="w-3.5 h-3.5" />
-              <span>Rollout Studio</span>
+              <span>Studio</span>
             </button>
 
             <button
               onClick={() => setActiveTab('simulator')}
-              className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                 activeTab === 'simulator'
                   ? 'bg-zinc-800 text-zinc-100 shadow-sm border border-zinc-700/50'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
@@ -82,39 +110,51 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             <button
+              onClick={() => setActiveTab('graph')}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                activeTab === 'graph'
+                  ? 'bg-zinc-800 text-zinc-100 shadow-sm border border-zinc-700/50'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
+              }`}
+            >
+              <GitFork className="w-3.5 h-3.5" />
+              <span>Dependency Graph</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('scanner')}
-              className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                 activeTab === 'scanner'
                   ? 'bg-zinc-800 text-zinc-100 shadow-sm border border-zinc-700/50'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
               }`}
             >
               <ShieldAlert className="w-3.5 h-3.5" />
-              <span>Dead Flag Scanner</span>
+              <span>AST Scanner</span>
             </button>
 
             <button
               onClick={() => setActiveTab('playground')}
-              className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                 activeTab === 'playground'
                   ? 'bg-zinc-800 text-zinc-100 shadow-sm border border-zinc-700/50'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
               }`}
             >
               <Terminal className="w-3.5 h-3.5" />
-              <span>OpenFeature SDKs</span>
+              <span>Playground & SDKs</span>
             </button>
 
             <button
               onClick={() => setActiveTab('audit')}
-              className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                 activeTab === 'audit'
                   ? 'bg-zinc-800 text-zinc-100 shadow-sm border border-zinc-700/50'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
               }`}
             >
               <History className="w-3.5 h-3.5" />
-              <span>Audit Log</span>
+              <span>Audit</span>
             </button>
           </nav>
 
@@ -147,6 +187,14 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             Simulator
+          </button>
+          <button
+            onClick={() => setActiveTab('graph')}
+            className={`px-2.5 py-1 text-xs rounded-md whitespace-nowrap ${
+              activeTab === 'graph' ? 'bg-zinc-800 text-white font-semibold' : 'text-zinc-400'
+            }`}
+          >
+            DAG Graph
           </button>
           <button
             onClick={() => setActiveTab('scanner')}

@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
 import { ScannerSummary, FlagScanReport, CodeReference } from '../../scanner/ast-scanner.js';
-import { CodemodResult } from '../../scanner/codemod.js';
+import { CodemodResult, BulkCodemodResult } from '../../scanner/codemod.js';
 import {
   ShieldAlert,
   FolderSearch,
   FileCode,
   Wrench,
   CheckCircle,
-  AlertTriangle,
-  ArrowRight,
+  GitBranch,
   Check,
   ChevronDown,
   ChevronUp,
@@ -20,14 +19,17 @@ export const DeadScannerView: React.FC = () => {
   const [summary, setSummary] = useState<ScannerSummary | null>(null);
   const [selectedReport, setSelectedReport] = useState<FlagScanReport | null>(null);
   const [codemodResult, setCodemodResult] = useState<CodemodResult | null>(null);
+  const [bulkResult, setBulkResult] = useState<BulkCodemodResult | null>(null);
   const [codemodLoading, setCodemodLoading] = useState(false);
   const [appliedSuccess, setAppliedSuccess] = useState(false);
   const [expandedFlag, setExpandedFlag] = useState<string | null>(null);
+  const [gitBranchInput, setGitBranchInput] = useState('');
 
   const handleScan = async () => {
     setLoading(true);
     setSelectedReport(null);
     setCodemodResult(null);
+    setBulkResult(null);
 
     try {
       const res = await fetch('/api/v1/scanner/scan', {
@@ -80,32 +82,31 @@ export const DeadScannerView: React.FC = () => {
     }
   };
 
-  const handleApplyCodemod = async () => {
-    if (!codemodResult || !selectedReport) return;
+  const handleBulkCodemod = async (report: FlagScanReport, resolvedVal: boolean) => {
     setCodemodLoading(true);
+    setAppliedSuccess(false);
 
     try {
-      const res = await fetch('/api/v1/scanner/codemod', {
+      const res = await fetch('/api/v1/scanner/codemod-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          filePath: codemodResult.filePath,
-          flagKey: selectedReport.flagKey,
-          resolvedValue: codemodResult.resolvedValue,
+          directory,
+          flagKey: report.flagKey,
+          resolvedValue: resolvedVal,
           dryRun: false,
-          backup: true,
+          gitBranch: gitBranchInput || report.flagKey,
         }),
       });
 
       if (res.ok) {
         const data = await res.json();
-        setCodemodResult(data.result);
+        setBulkResult(data.result);
         setAppliedSuccess(true);
-        // Refresh scan
         handleScan();
       }
     } catch (err) {
-      console.error('Codemod apply error:', err);
+      console.error('Bulk codemod error:', err);
     } finally {
       setCodemodLoading(false);
     }
@@ -127,7 +128,7 @@ export const DeadScannerView: React.FC = () => {
               placeholder="Codebase directory path (default: .)"
               value={directory}
               onChange={(e) => setDirectory(e.target.value)}
-              className="w-full px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
+              className="w-full px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500"
             />
           </div>
         </div>
@@ -135,7 +136,7 @@ export const DeadScannerView: React.FC = () => {
         <button
           onClick={handleScan}
           disabled={loading}
-          className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50 shadow-sm"
+          className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
         >
           <ShieldAlert className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           <span>{loading ? 'Analyzing AST...' : 'Scan Codebase AST'}</span>
@@ -226,52 +227,76 @@ export const DeadScannerView: React.FC = () => {
 
                   {isExpanded && (
                     <div className="p-4 border-t border-zinc-800/80 bg-zinc-950/40 space-y-4">
-                      <div className="space-y-2">
-                        <span className="text-[11px] font-semibold text-zinc-400">
-                          Discovered Call Sites:
-                        </span>
-                        {report.references.length === 0 ? (
-                          <p className="text-xs text-zinc-500 italic">
-                            No source references found in the scanned directory.
-                          </p>
-                        ) : (
-                          report.references.map((ref, idx) => (
-                            <div
-                              key={idx}
-                              className="p-3 bg-zinc-900/60 rounded-lg border border-zinc-800 space-y-2"
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center space-x-2 text-xs font-mono text-indigo-400">
-                                  <FileCode className="w-3.5 h-3.5" />
-                                  <span>
-                                    {ref.relativeFilePath}:{ref.line}:{ref.column}
-                                  </span>
-                                  <span className="text-zinc-500">({ref.methodName})</span>
-                                </div>
+                      {/* Bulk Codemod Action Bar */}
+                      <div className="p-3 bg-zinc-900/80 rounded-lg border border-indigo-500/30 flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center space-x-2">
+                          <GitBranch className="w-4 h-4 text-indigo-400" />
+                          <span className="text-xs font-semibold text-zinc-200">
+                            Bulk Project Codemod:
+                          </span>
+                          <input
+                            type="text"
+                            placeholder="Git branch (e.g. cleanup/dead-flag)"
+                            value={gitBranchInput}
+                            onChange={(e) => setGitBranchInput(e.target.value)}
+                            className="px-2 py-1 bg-zinc-950 border border-zinc-800 rounded font-mono text-[11px] text-zinc-200 w-48"
+                          />
+                        </div>
 
-                                {/* Codemod Action Buttons */}
-                                <div className="flex items-center space-x-2">
-                                  <button
-                                    onClick={() => handlePreviewCodemod(ref, report, true)}
-                                    className="px-2 py-1 rounded text-[11px] font-medium bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 transition-colors"
-                                  >
-                                    Codemod → True
-                                  </button>
-                                  <button
-                                    onClick={() => handlePreviewCodemod(ref, report, false)}
-                                    className="px-2 py-1 rounded text-[11px] font-medium bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 transition-colors"
-                                  >
-                                    Codemod → False
-                                  </button>
-                                </div>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => handleBulkCodemod(report, true)}
+                            disabled={codemodLoading}
+                            className="px-3 py-1 rounded text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white"
+                          >
+                            Unroll All → True
+                          </button>
+                          <button
+                            onClick={() => handleBulkCodemod(report, false)}
+                            disabled={codemodLoading}
+                            className="px-3 py-1 rounded text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white"
+                          >
+                            Unroll All → False
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Individual File Sites */}
+                      <div className="space-y-2">
+                        {report.references.map((ref, idx) => (
+                          <div
+                            key={idx}
+                            className="p-3 bg-zinc-900/60 rounded-lg border border-zinc-800 space-y-2"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2 text-xs font-mono text-indigo-400">
+                                <FileCode className="w-3.5 h-3.5" />
+                                <span>
+                                  {ref.relativeFilePath}:{ref.line}:{ref.column}
+                                </span>
                               </div>
 
-                              <pre className="p-2.5 bg-zinc-950 rounded border border-zinc-900 text-[11px] font-mono text-zinc-300 overflow-x-auto">
-                                {ref.snippet}
-                              </pre>
+                              <div className="flex items-center space-x-2">
+                                <button
+                                  onClick={() => handlePreviewCodemod(ref, report, true)}
+                                  className="px-2 py-0.5 rounded text-[11px] bg-emerald-600/20 text-emerald-300 border border-emerald-500/30"
+                                >
+                                  Diff True
+                                </button>
+                                <button
+                                  onClick={() => handlePreviewCodemod(ref, report, false)}
+                                  className="px-2 py-0.5 rounded text-[11px] bg-rose-600/20 text-rose-300 border border-rose-500/30"
+                                >
+                                  Diff False
+                                </button>
+                              </div>
                             </div>
-                          ))
-                        )}
+
+                            <pre className="p-2 bg-zinc-950 rounded text-[11px] font-mono text-zinc-300 overflow-x-auto">
+                              {ref.snippet}
+                            </pre>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -280,58 +305,44 @@ export const DeadScannerView: React.FC = () => {
             })}
           </div>
 
-          {/* Codemod Diff Preview Modal / Section */}
+          {/* Bulk Codemod Success Notification */}
+          {bulkResult && (
+            <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs space-y-1">
+              <span className="font-bold block">
+                Bulk Codemod Completed: {bulkResult.totalFilesModified} files modified (
+                {bulkResult.totalTransforms} AST nodes unrolled).
+              </span>
+              {bulkResult.branchCreated && (
+                <span>
+                  Git branch created and committed: <code>{bulkResult.branchCreated}</code>
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Single Codemod Diff Preview */}
           {codemodResult && (
             <div className="p-6 bg-zinc-900/90 rounded-xl border border-indigo-500/40 shadow-2xl space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <Wrench className="w-5 h-5 text-indigo-400" />
-                  <div>
-                    <h4 className="text-sm font-bold text-zinc-100">
-                      AST Codemod Preview: {selectedReport?.flagKey} →{' '}
-                      <span className="text-indigo-400 font-mono">
-                        {String(codemodResult.resolvedValue)}
-                      </span>
-                    </h4>
-                    <p className="text-xs text-zinc-400 font-mono">
-                      File: {codemodResult.relativeFilePath} (
-                      {codemodResult.transformCount} AST nodes modified)
-                    </p>
-                  </div>
+                  <span className="text-sm font-bold text-zinc-100">
+                    Diff Preview: {codemodResult.relativeFilePath}
+                  </span>
                 </div>
-
-                <div className="flex items-center space-x-3">
-                  {appliedSuccess ? (
-                    <div className="flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
-                      <Check className="w-4 h-4" />
-                      <span>Codemod Applied (.bak created)</span>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={handleApplyCodemod}
-                      disabled={codemodLoading}
-                      className="inline-flex items-center space-x-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                      <span>Apply to Codebase</span>
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setCodemodResult(null)}
-                    className="text-xs text-zinc-400 hover:text-zinc-200"
-                  >
-                    Close
-                  </button>
-                </div>
+                <button
+                  onClick={() => setCodemodResult(null)}
+                  className="text-xs text-zinc-400 hover:text-zinc-200"
+                >
+                  Close
+                </button>
               </div>
 
-              {/* Diff Output */}
               <div className="p-3 bg-zinc-950 rounded-lg border border-zinc-800 text-xs font-mono max-h-72 overflow-y-auto">
                 {codemodResult.diff.split('\n').map((line, idx) => {
                   const isAdd = line.startsWith('+') && !line.startsWith('+++');
                   const isDel = line.startsWith('-') && !line.startsWith('---');
                   const isHdr = line.startsWith('@@') || line.startsWith('Index:');
-
                   return (
                     <div
                       key={idx}

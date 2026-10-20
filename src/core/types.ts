@@ -9,12 +9,14 @@ export type EvaluationReason =
   | 'DEFAULT'
   | 'DISABLED'
   | 'STATIC'
+  | 'PREREQUISITE_FAILED'
   | 'ERROR';
 
 export type ErrorCode =
   | 'FLAG_NOT_FOUND'
   | 'TYPE_MISMATCH'
   | 'PARSE_ERROR'
+  | 'CIRCULAR_DEPENDENCY'
   | 'GENERAL';
 
 export type RuleOperator =
@@ -57,12 +59,12 @@ export interface TargetingRule {
 
 export interface VariantSplit {
   variant: string;
-  weight: number; // percentage weight, e.g. 50
+  weight: number;
 }
 
 export interface PercentageRollout {
   percentage: number; // 0 to 100
-  stickinessProperty?: string; // defaults to 'targetingKey' or 'userId'
+  stickinessProperty?: string;
   salt?: string;
   variants?: VariantSplit[];
 }
@@ -77,6 +79,34 @@ export type CanaryStage =
 
 export type FlagLifecycle = 'active' | 'canary' | 'dead' | 'archived';
 
+export interface FlagPrerequisite {
+  flagKey: string;
+  expectedVariant?: string;
+  expectedValue?: unknown;
+}
+
+export interface CircuitBreakerConfig {
+  enabled: boolean;
+  errorThresholdPercent: number; // e.g. 5 for 5%
+  minRequests: number; // minimum requests before evaluating threshold
+  windowSeconds: number; // sliding window, e.g. 60s
+  action: 'killswitch' | 'rollback_stage';
+}
+
+export interface RolloutSchedule {
+  id: string;
+  at: string; // ISO date string
+  stage: CanaryStage;
+  percentage: number;
+  applied?: boolean;
+}
+
+export interface EnvironmentOverride {
+  enabled?: boolean;
+  rollout?: PercentageRollout;
+  canaryStage?: CanaryStage;
+}
+
 export interface FeatureFlag {
   key: string;
   name: string;
@@ -90,10 +120,14 @@ export interface FeatureFlag {
   rollout?: PercentageRollout;
   canaryStage?: CanaryStage;
   lifecycle: FlagLifecycle;
+  prerequisites?: FlagPrerequisite[];
+  circuitBreaker?: CircuitBreakerConfig;
+  schedules?: RolloutSchedule[];
+  environments?: Record<string, EnvironmentOverride>; // 'local' | 'staging' | 'production'
   tags?: string[];
   createdAt: string;
   updatedAt: string;
-  staleSince?: string; // ISO date string when flag was completed or abandoned
+  staleSince?: string;
 }
 
 export interface EvaluationContext {
@@ -104,6 +138,7 @@ export interface EvaluationContext {
   tier?: string;
   appVersion?: string;
   device?: string;
+  environment?: string; // e.g. 'local', 'staging', 'production'
   [key: string]: unknown;
 }
 
@@ -114,6 +149,7 @@ export interface EvaluationDetails<T = unknown> {
   reason: EvaluationReason;
   ruleIndex?: number;
   matchedRuleId?: string;
+  failedPrerequisiteKey?: string;
   bucket?: number;
   errorCode?: ErrorCode;
   errorMessage?: string;
@@ -121,9 +157,18 @@ export interface EvaluationDetails<T = unknown> {
   evaluatedAt: string;
 }
 
+export interface WebhookConfig {
+  id: string;
+  name: string;
+  url: string;
+  events: Array<'TOGGLE' | 'CANARY_ADVANCE' | 'CIRCUIT_BREAKER_TRIGGERED' | 'SCHEDULE_TRIGGERED'>;
+  enabled: boolean;
+}
+
 export interface FlagConfiguration {
   version: string;
   flags: Record<string, FeatureFlag>;
+  webhooks?: WebhookConfig[];
   metadata?: {
     environment?: string;
     description?: string;

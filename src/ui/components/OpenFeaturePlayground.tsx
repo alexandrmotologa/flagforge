@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { FeatureFlag, EvaluationDetails } from '../../core/types.js';
-import { Terminal, Play, Copy, Check, Code, ShieldCheck, Cpu } from 'lucide-react';
+import { Terminal, Play, Copy, Check, Code, Clock, Globe } from 'lucide-react';
 
 interface OpenFeaturePlaygroundProps {
   flags: FeatureFlag[];
@@ -21,7 +21,9 @@ export const OpenFeaturePlayground: React.FC<OpenFeaturePlaygroundProps> = ({ fl
       2
     )
   );
-  const [evaluationResult, setEvaluationResult] = useState<EvaluationDetails | null>(null);
+  const [environment, setEnvironment] = useState<'local' | 'staging' | 'production'>('local');
+  const [timeTravelAsOf, setTimeTravelAsOf] = useState<string>('');
+  const [evaluationResult, setEvaluationResult] = useState<any | null>(null);
   const [evaluating, setEvaluating] = useState<boolean>(false);
   const [activeLang, setActiveLang] = useState<'node' | 'react' | 'python' | 'go' | 'curl'>('node');
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
@@ -42,18 +44,19 @@ export const OpenFeaturePlayground: React.FC<OpenFeaturePlaygroundProps> = ({ fl
     }
 
     try {
-      const res = await fetch('/api/v1/evaluate', {
+      const res = await fetch(`/api/v1/evaluate?env=${environment}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           flagKey: selectedFlagKey,
           defaultValue: selectedFlag?.defaultValue ?? false,
           context: parsedContext,
+          asOf: timeTravelAsOf ? new Date(timeTravelAsOf).toISOString() : undefined,
         }),
       });
 
       if (res.ok) {
-        const data = (await res.json()) as EvaluationDetails;
+        const data = await res.json();
         setEvaluationResult(data);
       }
     } catch (err) {
@@ -87,14 +90,12 @@ const isEnabled = await client.get${flagType === 'boolean' ? 'Boolean' : flagTyp
     targetingKey: 'usr_123',
     tier: 'enterprise',
     country: 'MD',
+    environment: '${environment}',
   }
 );`;
 
       case 'react':
         return `import { useFlag, OpenFeatureProvider } from '@openfeature/react-sdk';
-
-// In your root App component:
-// <OpenFeatureProvider client={flagforgeClient}>
 
 export function FeatureComponent() {
   const { value: isEnabled } = useFlag('${key}', ${JSON.stringify(
@@ -112,14 +113,13 @@ export function FeatureComponent() {
         return `from openfeature import api
 from openfeature.contrib.provider.ofrep import OFREPProvider
 
-# Set OFREP provider pointing to FlagForge daemon
 api.set_provider(OFREPProvider("http://localhost:4900/ofrep"))
 client = api.get_client()
 
 result = client.get_${flagType === 'boolean' ? 'boolean' : flagType === 'string' ? 'string' : 'number'}_value(
     "${key}",
-    ${selectedFlag?.defaultValue === false ? 'False' : selectedFlag?.defaultValue === true ? 'True' : JSON.stringify(selectedFlag?.defaultValue ?? False)},
-    {"targeting_key": "usr_123", "tier": "enterprise"}
+    ${selectedFlag?.defaultValue === false ? 'False' : selectedFlag?.defaultValue === true ? 'True' : JSON.stringify(selectedFlag?.defaultValue ?? false)},
+    {"targeting_key": "usr_123", "tier": "enterprise", "environment": "${environment}"}
 )`;
 
       case 'go':
@@ -135,7 +135,7 @@ func main() {
     client := openfeature.NewClient("flagforge-service")
     evalCtx := openfeature.NewEvaluationContext(
         "usr_123",
-        map[string]interface{}{"tier": "enterprise", "country": "MD"},
+        map[string]interface{}{"tier": "enterprise", "environment": "${environment}"},
     )
 
     val, err := client.BooleanValue(context.Background(), "${key}", false, evalCtx)
@@ -144,7 +144,7 @@ func main() {
 
       case 'curl':
         return `# CNCF OFREP Standard Evaluation Request:
-curl -X POST http://localhost:4900/ofrep/v1/evaluate/flags/${key} \\
+curl -X POST "http://localhost:4900/ofrep/v1/evaluate/flags/${key}?env=${environment}" \\
   -H "Content-Type: application/json" \\
   -d '{
     "context": {
@@ -156,22 +156,15 @@ curl -X POST http://localhost:4900/ofrep/v1/evaluate/flags/${key} \\
     }
   };
 
-  const copySnippet = () => {
-    navigator.clipboard.writeText(getCodeSnippet());
-    setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 1500);
-  };
-
   return (
     <div className="space-y-6">
-      {/* Live Flag Evaluation Debugger */}
       <div className="p-6 bg-zinc-900/40 rounded-xl border border-zinc-800 space-y-4">
         <div className="flex items-center space-x-2">
           <Terminal className="w-5 h-5 text-indigo-400" />
           <div>
-            <h3 className="text-sm font-bold text-zinc-100">Live OpenFeature Evaluator</h3>
+            <h3 className="text-sm font-bold text-zinc-100">Live OpenFeature Evaluator & Time-Travel</h3>
             <p className="text-xs text-zinc-400">
-              Test context resolution, nested attributes, and rule matching in real time
+              Test context resolution, multi-environment overrides, and replay historical states
             </p>
           </div>
         </div>
@@ -179,19 +172,57 @@ curl -X POST http://localhost:4900/ofrep/v1/evaluate/flags/${key} \\
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
           {/* Left: Input Controls */}
           <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1">Target Flag</label>
-              <select
-                value={selectedFlagKey}
-                onChange={(e) => setSelectedFlagKey(e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500"
-              >
-                {flags.map((f) => (
-                  <option key={f.key} value={f.key}>
-                    {f.name} ({f.key})
-                  </option>
-                ))}
-              </select>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">Target Flag</label>
+                <select
+                  value={selectedFlagKey}
+                  onChange={(e) => setSelectedFlagKey(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500"
+                >
+                  {flags.map((f) => (
+                    <option key={f.key} value={f.key}>
+                      {f.name} ({f.key})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">Environment</label>
+                <select
+                  value={environment}
+                  onChange={(e) => setEnvironment(e.target.value as any)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs font-semibold text-indigo-400 focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="local">local</option>
+                  <option value="staging">staging</option>
+                  <option value="production">production</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Time-Travel Input */}
+            <div className="p-2.5 bg-zinc-950/60 rounded-lg border border-zinc-800 flex items-center space-x-2">
+              <Clock className="w-4 h-4 text-amber-400 flex-shrink-0" />
+              <div className="flex-1">
+                <span className="text-[10px] text-zinc-400 block">Time-Travel Replay (Evaluate As-Of):</span>
+                <input
+                  type="datetime-local"
+                  value={timeTravelAsOf}
+                  onChange={(e) => setTimeTravelAsOf(e.target.value)}
+                  className="w-full bg-transparent text-xs font-mono text-zinc-300 focus:outline-none"
+                />
+              </div>
+              {timeTravelAsOf && (
+                <button
+                  type="button"
+                  onClick={() => setTimeTravelAsOf('')}
+                  className="text-[10px] text-zinc-500 hover:text-zinc-300"
+                >
+                  Clear
+                </button>
+              )}
             </div>
 
             <div>
@@ -199,45 +230,9 @@ curl -X POST http://localhost:4900/ofrep/v1/evaluate/flags/${key} \\
                 <label className="text-xs font-semibold text-zinc-300">
                   Evaluation Context (JSON)
                 </label>
-                <div className="flex space-x-1">
-                  <button
-                    onClick={() =>
-                      setContextJson(
-                        JSON.stringify({ userId: 'u1', tier: 'enterprise', country: 'MD' }, null, 2)
-                      )
-                    }
-                    className="text-[10px] text-zinc-400 hover:text-indigo-400 px-1.5 py-0.5 rounded bg-zinc-800"
-                  >
-                    Enterprise
-                  </button>
-                  <button
-                    onClick={() =>
-                      setContextJson(
-                        JSON.stringify({ userId: 'u2', tier: 'free', country: 'US' }, null, 2)
-                      )
-                    }
-                    className="text-[10px] text-zinc-400 hover:text-indigo-400 px-1.5 py-0.5 rounded bg-zinc-800"
-                  >
-                    Free
-                  </button>
-                  <button
-                    onClick={() =>
-                      setContextJson(
-                        JSON.stringify(
-                          { userId: 'u3', email: 'dev@flagforge.dev', tier: 'pro' },
-                          null,
-                          2
-                        )
-                      )
-                    }
-                    className="text-[10px] text-zinc-400 hover:text-indigo-400 px-1.5 py-0.5 rounded bg-zinc-800"
-                  >
-                    Staff
-                  </button>
-                </div>
               </div>
               <textarea
-                rows={6}
+                rows={5}
                 value={contextJson}
                 onChange={(e) => setContextJson(e.target.value)}
                 className="w-full p-3 bg-zinc-950 border border-zinc-800 rounded-lg text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500"
@@ -259,9 +254,11 @@ curl -X POST http://localhost:4900/ofrep/v1/evaluate/flags/${key} \\
             <div>
               <div className="flex items-center justify-between pb-3 border-b border-zinc-800 text-xs">
                 <span className="font-semibold text-zinc-400">Resolution Details</span>
-                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                  Latency: &lt;0.1ms
-                </span>
+                {evaluationResult?.historical && (
+                  <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                    Historical Snapshot ({evaluationResult.asOf})
+                  </span>
+                )}
               </div>
 
               {evaluationResult ? (
@@ -275,8 +272,23 @@ curl -X POST http://localhost:4900/ofrep/v1/evaluate/flags/${key} \\
 
                   <div className="flex justify-between items-center py-1 border-t border-zinc-900">
                     <span className="text-zinc-400">Resolution Reason:</span>
-                    <span className="text-amber-400 font-semibold">{evaluationResult.reason}</span>
+                    <span
+                      className={`font-semibold ${
+                        evaluationResult.reason === 'PREREQUISITE_FAILED'
+                          ? 'text-rose-400'
+                          : 'text-amber-400'
+                      }`}
+                    >
+                      {evaluationResult.reason}
+                    </span>
                   </div>
+
+                  {evaluationResult.failedPrerequisiteKey && (
+                    <div className="flex justify-between items-center py-1 border-t border-zinc-900 text-rose-300">
+                      <span>Failed Prerequisite:</span>
+                      <span>{evaluationResult.failedPrerequisiteKey}</span>
+                    </div>
+                  )}
 
                   {evaluationResult.variant && (
                     <div className="flex justify-between items-center py-1 border-t border-zinc-900">
@@ -301,59 +313,53 @@ curl -X POST http://localhost:4900/ofrep/v1/evaluate/flags/${key} \\
                 </div>
               ) : (
                 <div className="text-center py-12 text-zinc-500 text-xs">
-                  Click "Evaluate Flag" to run in-memory or OFREP evaluation.
+                  Click "Evaluate Flag" to test in-memory, multi-environment or time-travel evaluation.
                 </div>
               )}
             </div>
 
             <div className="text-[10px] text-zinc-500 pt-3 border-t border-zinc-900 flex items-center justify-between">
-              <span>CNCF OpenFeature Standard v0.7+</span>
-              <span className="text-indigo-400">Zero-Cloud Local Provider</span>
+              <span>Environment: {environment}</span>
+              <span className="text-indigo-400">CNCF OFREP Compliant</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* SDK Integration Code Generator */}
+      {/* SDK Code Snippets */}
       <div className="p-6 bg-zinc-900/40 rounded-xl border border-zinc-800 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Code className="w-5 h-5 text-indigo-400" />
-            <div>
-              <h3 className="text-sm font-bold text-zinc-100">Client SDK Integration Snippets</h3>
-              <p className="text-xs text-zinc-400">
-                Works directly with official OpenFeature SDKs without code changes
-              </p>
-            </div>
+            <h3 className="text-sm font-bold text-zinc-100">Client SDK Integration Snippets</h3>
           </div>
-
           <button
-            onClick={copySnippet}
-            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition-colors"
+            onClick={() => {
+              navigator.clipboard.writeText(getCodeSnippet());
+              setCopiedCode(true);
+              setTimeout(() => setCopiedCode(false), 1500);
+            }}
+            className="px-3 py-1 rounded text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200"
           >
-            {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{copiedCode ? 'Copied' : 'Copy Snippet'}</span>
+            {copiedCode ? 'Copied' : 'Copy Snippet'}
           </button>
         </div>
 
-        {/* Language Tabs */}
         <div className="flex space-x-1 border-b border-zinc-800 pb-2">
           {(
             [
-              { id: 'node', label: 'Node.js / TypeScript' },
-              { id: 'react', label: 'React (@openfeature)' },
-              { id: 'python', label: 'Python (openfeature-sdk)' },
-              { id: 'go', label: 'Go (openfeature-go)' },
-              { id: 'curl', label: 'cURL / OFREP API' },
+              { id: 'node', label: 'Node.js' },
+              { id: 'react', label: 'React' },
+              { id: 'python', label: 'Python' },
+              { id: 'go', label: 'Go' },
+              { id: 'curl', label: 'cURL' },
             ] as const
           ).map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveLang(tab.id)}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                activeLang === tab.id
-                  ? 'bg-zinc-800 text-zinc-100 font-semibold'
-                  : 'text-zinc-400 hover:text-zinc-200'
+              className={`px-3 py-1 rounded-lg text-xs font-medium ${
+                activeLang === tab.id ? 'bg-zinc-800 text-zinc-100 font-semibold' : 'text-zinc-400'
               }`}
             >
               {tab.label}
@@ -361,8 +367,7 @@ curl -X POST http://localhost:4900/ofrep/v1/evaluate/flags/${key} \\
           ))}
         </div>
 
-        {/* Code Display */}
-        <pre className="p-4 bg-zinc-950 rounded-xl border border-zinc-800/80 text-xs font-mono text-zinc-300 overflow-x-auto leading-relaxed">
+        <pre className="p-4 bg-zinc-950 rounded-xl border border-zinc-800 text-xs font-mono text-zinc-300 overflow-x-auto">
           {getCodeSnippet()}
         </pre>
       </div>

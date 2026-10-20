@@ -7,6 +7,7 @@ import { BlastSimulatorView } from './components/BlastSimulatorView.js';
 import { DeadScannerView } from './components/DeadScannerView.js';
 import { OpenFeaturePlayground } from './components/OpenFeaturePlayground.js';
 import { AuditLogView } from './components/AuditLogView.js';
+import { DependencyGraphView } from './components/DependencyGraphView.js';
 import { FeatureFlag } from '../core/types.js';
 
 export const App: React.FC = () => {
@@ -18,9 +19,11 @@ export const App: React.FC = () => {
     advanceStage,
     saveFlag,
     deleteFlag,
+    refresh,
   } = useFlags();
 
   const [activeTab, setActiveTab] = useState<TabType>('flags');
+  const [environment, setEnvironment] = useState<string>('local');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingFlag, setEditingFlag] = useState<FeatureFlag | null>(null);
   const [simulationTarget, setSimulationTarget] = useState<string | undefined>(undefined);
@@ -42,16 +45,16 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans">
-      {/* Top Navigation Bar */}
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         connected={connected}
         flagsCount={flags.length}
+        environment={environment}
+        setEnvironment={setEnvironment}
         onNewFlag={handleNewFlag}
       />
 
-      {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {loading ? (
           <div className="flex items-center justify-center py-32 space-x-3 text-zinc-400">
@@ -68,12 +71,15 @@ export const App: React.FC = () => {
                 onEdit={handleEditFlag}
                 onDelete={deleteFlag}
                 onSimulate={handleSimulate}
+                onRefresh={refresh}
               />
             )}
 
             {activeTab === 'simulator' && (
               <BlastSimulatorView flags={flags} initialFlagKey={simulationTarget} />
             )}
+
+            {activeTab === 'graph' && <DependencyGraphView />}
 
             {activeTab === 'scanner' && <DeadScannerView />}
 
@@ -84,7 +90,6 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      {/* Flag Create / Edit Modal */}
       <FlagEditorModal
         isOpen={modalOpen}
         flag={editingFlag}
@@ -92,13 +97,12 @@ export const App: React.FC = () => {
         onSave={saveFlag}
       />
 
-      {/* Footer */}
       <footer className="border-t border-zinc-850 bg-zinc-950 py-6 text-xs text-zinc-500">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-2">
             <span className="font-semibold text-zinc-400">FlagForge</span>
             <span>•</span>
-            <span>CNCF OpenFeature Local Engine & Blast-Radius Simulator</span>
+            <span>CNCF OpenFeature Local Engine, Sentinel & Rollout Studio</span>
           </div>
           <div className="flex items-center space-x-4">
             <a
