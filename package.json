@@ -1,0 +1,89 @@
+{
+  "name": "flagforge",
+  "version": "1.0.0",
+  "description": "OpenFeature compliant local feature flag engine, blast radius simulator, and AST dead code scanner",
+  "author": "Alexandr Motologa",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "flagforge": "./bin/flagforge.js"
+  },
+  "main": "./dist/src/core/index.js",
+  "types": "./dist/src/core/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./src/core/index.ts",
+      "types": "./src/core/index.ts"
+    },
+    "./provider": {
+      "import": "./src/provider/index.ts",
+      "types": "./src/provider/index.ts"
+    },
+    "./scanner": {
+      "import": "./src/scanner/index.ts",
+      "types": "./src/scanner/index.ts"
+    },
+    "./simulator": {
+      "import": "./src/simulator/index.ts",
+      "types": "./src/simulator/index.ts"
+    }
+  },
+  "scripts": {
+    "dev": "tsx src/cli/index.ts start",
+    "dev:ui": "vite",
+    "build": "vite build && tsc -p tsconfig.server.json",
+    "build:ui": "vite build",
+    "build:server": "tsc -p tsconfig.server.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "start": "node bin/flagforge.js start"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexandrmotologa/flagforge.git"
+  },
+  "keywords": [
+    "openfeature",
+    "feature-flags",
+    "blast-radius-simulator",
+    "codemod",
+    "ast-scanner",
+    "canary-rollout",
+    "local-first",
+    "devtools"
+  ],
+  "dependencies": {
+    "@babel/generator": "^7.26.5",
+    "@babel/parser": "^7.26.7",
+    "@babel/traverse": "^7.26.7",
+    "@babel/types": "^7.26.7",
+    "@openfeature/core": "^1.1.0",
+    "@openfeature/server-sdk": "^1.14.1",
+    "commander": "^13.1.0",
+    "cors": "^2.8.5",
+    "diff": "^7.0.0",
+    "express": "^4.21.2",
+    "lucide-react": "^0.475.0",
+    "picocolors": "^1.1.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/babel__traverse": "^7.20.6",
+    "@types/cors": "^2.8.17",
+    "@types/diff": "^6.0.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.7",
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "puppeteer-core": "^24.43.1",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11",
+    "vitest": "^3.0.4"
+  }
+}

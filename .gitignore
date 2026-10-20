@@ -1,0 +1,10 @@
+node_modules/
+.flagforge/
+.temp_frames/
+*.bak
+.DS_Store
+dist/
+coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

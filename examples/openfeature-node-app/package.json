@@ -1,0 +1,11 @@
+{
+  "name": "openfeature-node-app",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx app.ts"
+  },
+  "dependencies": {
+    "@openfeature/server-sdk": "^1.14.1"
+  }
+}

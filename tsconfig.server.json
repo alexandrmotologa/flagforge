@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "dist",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "resolveJsonModule": true,
+    "sourceMap": true
+  },
+  "include": ["src/core", "src/provider", "src/storage", "src/simulator", "src/scanner", "src/server", "src/cli", "bin"],
+  "exclude": ["src/ui", "tests", "examples"]
+}
