@@ -1,20 +1,24 @@
+<p align="center">
+  <img src="docs/images/logo.png?raw=true" alt="FlagForge Logo" width="130" style="border-radius: 24px;" />
+</p>
+
+<h1 align="center">FlagForge</h1>
+
+<p align="center">
+  <strong>OpenFeature-compliant local feature flag engine, blast-radius simulator, dependency graph inspector, and dead flag AST scanner.</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/alexandrmotologa/flagforge/actions/workflows/ci.yml"><img src="https://github.com/alexandrmotologa/flagforge/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://openfeature.dev"><img src="https://img.shields.io/badge/CNCF-OpenFeature_v0.7+-blue.svg" alt="OpenFeature" /></a>
+  <a href="https://www.typescriptlang.org"><img src="https://img.shields.io/badge/TypeScript-5.7-blue.svg" alt="TypeScript" /></a>
+  <a href="https://react.dev"><img src="https://img.shields.io/badge/React-19.0-61dafb.svg" alt="React 19" /></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-22+-green.svg" alt="Node.js" /></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
+</p>
+
 <div align="center">
-
-# FlagForge
-
-**OpenFeature-compliant local feature flag engine, blast-radius simulator, dependency graph inspector, and dead flag AST scanner.**
-
-[![CI](https://github.com/alexandrmotologa/flagforge/actions/workflows/ci.yml/badge.svg)](https://github.com/alexandrmotologa/flagforge/actions/workflows/ci.yml)
-[![OpenFeature](https://img.shields.io/badge/CNCF-OpenFeature_v0.7+-blue.svg)](https://openfeature.dev)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org)
-[![React 19](https://img.shields.io/badge/React-19.0-61dafb.svg)](https://react.dev)
-[![Node.js](https://img.shields.io/badge/Node.js-22+-green.svg)](https://nodejs.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-<br />
-
-<img src="docs/images/flagforge_demo.gif" alt="FlagForge Animated Demo" width="920" />
-
+  <img src="docs/images/flagforge_demo.gif" alt="FlagForge Animated Demo" width="920" />
 </div>
 
 ---
@@ -60,6 +64,18 @@ Visualize MurmurHash3 distribution curves across synthetic populations and revie
 Identify stale flag usages in your source tree and apply automated AST refactoring with backup preservation and git branch generation.
 
 <img src="docs/images/flagforge-3.png" alt="AST Scanner and Codemod" width="920" />
+
+### OpenFeature Playground & Multi-Language SDKs
+Evaluate context payloads in real time, test time-travel replays, and copy code snippets for Node.js, React, Python, Go, and cURL.
+
+<img src="docs/images/flagforge-4.png" alt="OpenFeature Playground" width="920" />
+
+### Responsive Multi-Device Support
+Studio layouts adapt across mobile phones, tablets, and wide-screen developer displays with touch navigation and responsive metric grids.
+
+<p align="center">
+  <img src="docs/images/flagforge-mobile.png" alt="FlagForge Mobile View" width="340" style="border-radius: 16px; border: 1px solid #27272a;" />
+</p>
 
 ---
 
