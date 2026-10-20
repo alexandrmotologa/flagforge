@@ -328,10 +328,10 @@ curl -X POST "http://localhost:4900/ofrep/v1/evaluate/flags/${key}?env=${environ
 
       {/* SDK Code Snippets */}
       <div className="p-6 bg-zinc-900/40 rounded-xl border border-zinc-800 space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <div className="flex items-center space-x-2">
-            <Code className="w-5 h-5 text-indigo-400" />
-            <h3 className="text-sm font-bold text-zinc-100">Client SDK Integration Snippets</h3>
+            <Code className="w-5 h-5 text-indigo-400 flex-shrink-0" />
+            <h3 className="text-sm font-bold text-zinc-100 whitespace-nowrap">Client SDK Integration Snippets</h3>
           </div>
           <button
             onClick={() => {
@@ -339,13 +339,13 @@ curl -X POST "http://localhost:4900/ofrep/v1/evaluate/flags/${key}?env=${environ
               setCopiedCode(true);
               setTimeout(() => setCopiedCode(false), 1500);
             }}
-            className="px-3 py-1 rounded text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200"
+            className="px-3 py-1 rounded text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200 whitespace-nowrap flex-shrink-0 select-none transition-colors"
           >
             {copiedCode ? 'Copied' : 'Copy Snippet'}
           </button>
         </div>
 
-        <div className="flex space-x-1 border-b border-zinc-800 pb-2">
+        <div className="flex space-x-1 border-b border-zinc-800 pb-2 overflow-x-auto no-scrollbar">
           {(
             [
               { id: 'node', label: 'Node.js' },
@@ -358,8 +358,8 @@ curl -X POST "http://localhost:4900/ofrep/v1/evaluate/flags/${key}?env=${environ
             <button
               key={tab.id}
               onClick={() => setActiveLang(tab.id)}
-              className={`px-3 py-1 rounded-lg text-xs font-medium ${
-                activeLang === tab.id ? 'bg-zinc-800 text-zinc-100 font-semibold' : 'text-zinc-400'
+              className={`px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap flex-shrink-0 select-none transition-all ${
+                activeLang === tab.id ? 'bg-zinc-800 text-zinc-100 font-semibold' : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
               {tab.label}

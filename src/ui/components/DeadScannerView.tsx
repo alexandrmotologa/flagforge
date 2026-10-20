@@ -136,10 +136,10 @@ export const DeadScannerView: React.FC = () => {
         <button
           onClick={handleScan}
           disabled={loading}
-          className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
+          className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50 whitespace-nowrap flex-shrink-0 select-none shadow-sm"
         >
-          <ShieldAlert className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          <span>{loading ? 'Analyzing AST...' : 'Scan Codebase AST'}</span>
+          <ShieldAlert className={`w-4 h-4 flex-shrink-0 ${loading ? 'animate-spin' : ''}`} />
+          <span className="whitespace-nowrap">{loading ? 'Analyzing AST...' : 'Scan Codebase AST'}</span>
         </button>
       </div>
 

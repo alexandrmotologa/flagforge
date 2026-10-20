@@ -100,10 +100,10 @@ export const BlastSimulatorView: React.FC<BlastSimulatorViewProps> = ({
         <button
           onClick={runSimulation}
           disabled={loading}
-          className="self-end sm:self-auto inline-flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50 shadow-sm"
+          className="self-end sm:self-auto inline-flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50 shadow-sm whitespace-nowrap flex-shrink-0 select-none"
         >
-          <Activity className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          <span>{loading ? 'Evaluating Cohort...' : 'Re-Run Blast Simulation'}</span>
+          <Activity className={`w-4 h-4 flex-shrink-0 ${loading ? 'animate-spin' : ''}`} />
+          <span className="whitespace-nowrap">{loading ? 'Evaluating Cohort...' : 'Re-Run Blast Simulation'}</span>
         </button>
       </div>
 

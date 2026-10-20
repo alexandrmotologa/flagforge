@@ -93,13 +93,13 @@ export const FlagList: React.FC<FlagListProps> = ({
           />
         </div>
 
-        <div className="flex items-center space-x-1.5 self-center sm:self-auto">
-          <Filter className="w-3.5 h-3.5 text-zinc-500 mr-1" />
+        <div className="flex items-center space-x-1.5 self-center sm:self-auto overflow-x-auto no-scrollbar">
+          <Filter className="w-3.5 h-3.5 text-zinc-500 mr-1 flex-shrink-0" />
           {(['all', 'canary', 'active', 'dead'] as const).map((filter) => (
             <button
               key={filter}
               onClick={() => setStatusFilter(filter)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-all ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-all whitespace-nowrap flex-shrink-0 select-none ${
                 statusFilter === filter
                   ? 'bg-zinc-800 text-zinc-100 border border-zinc-700/60 shadow-xs'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
@@ -273,11 +273,11 @@ export const FlagList: React.FC<FlagListProps> = ({
                     </div>
 
                     {/* Action buttons */}
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-2 flex-shrink-0">
                       <button
                         onClick={() => handleSimulateError(flag.key)}
                         title="Simulate Error Report (Test Sentinel Circuit Breaker)"
-                        className="p-2 rounded-lg bg-zinc-800/80 hover:bg-rose-950/40 text-zinc-400 hover:text-rose-400 border border-zinc-700/50 transition-colors"
+                        className="p-2 rounded-lg bg-zinc-800/80 hover:bg-rose-950/40 text-zinc-400 hover:text-rose-400 border border-zinc-700/50 transition-colors flex-shrink-0"
                       >
                         <Bug className="w-4 h-4" />
                       </button>
@@ -285,7 +285,7 @@ export const FlagList: React.FC<FlagListProps> = ({
                       <button
                         onClick={() => onSimulate(flag.key)}
                         title="Simulate Blast-Radius on cohort"
-                        className="p-2 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700/50 transition-colors"
+                        className="p-2 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700/50 transition-colors flex-shrink-0"
                       >
                         <Activity className="w-4 h-4 text-amber-400" />
                       </button>
@@ -293,7 +293,7 @@ export const FlagList: React.FC<FlagListProps> = ({
                       <button
                         onClick={() => onEdit(flag)}
                         title="Edit Flag, Prerequisites & Sentinel"
-                        className="p-2 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700/50 transition-colors"
+                        className="p-2 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700/50 transition-colors flex-shrink-0"
                       >
                         <Edit2 className="w-4 h-4 text-zinc-300" />
                       </button>
@@ -301,7 +301,7 @@ export const FlagList: React.FC<FlagListProps> = ({
                       <button
                         onClick={() => onDelete(flag.key)}
                         title="Delete Flag"
-                        className="p-2 rounded-lg bg-zinc-800/80 hover:bg-rose-900/40 text-zinc-400 hover:text-rose-400 border border-zinc-700/50 transition-colors"
+                        className="p-2 rounded-lg bg-zinc-800/80 hover:bg-rose-900/40 text-zinc-400 hover:text-rose-400 border border-zinc-700/50 transition-colors flex-shrink-0"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
